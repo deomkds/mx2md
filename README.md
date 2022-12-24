@@ -15,7 +15,7 @@ python3 mx2md.py -i [input file or folder] -o [output folder]
 | Option        | Description |
 |:-------------:|:--------------|
 | -i            | Specifies an input file or a folder containing Memorix Backup files (\*.mxbk). When a folder is specified, the most recent '\*.mxbk' file will be used. |
-| -o            | Specifies the destination folder. It will be created if it does not exist. |
+| -o            | Specifies the destination folder. A subfolder called Memorix will be created at the specified path. |
 | -v            | Verbose output. |
 | -h            | Prints help. |
 
