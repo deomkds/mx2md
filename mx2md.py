@@ -240,12 +240,14 @@ def print_help():
     print("  -i        Specifies an input file or a folder containing Memorix Backup files (*.mxbk).")
     print("            When a folder is specified, the most recent '*.mxbk' file will be used.\n")
     print("  -o        Specifies the destination folder.")
-    print("  -v        Verbose output.")
+    print("  -s        Enables Safe Mode and don't delete any file.")
+    print("  -v        Enables verbose output with debug information.")
     print("  -h        Prints this help.")
-    print("  -ct       Create 'Trash' as a category folder.")
-    print("  -ca       Create 'Archive' as a category folder.")
-    print("  -it       Ignore Trash: notes in it will be ignored.")
-    print("  -ia       Ignore Archive: notes in it will be ignored.")
+    print("  -ct       Creates 'Trash' as a category folder.")
+    print("  -ca       Creates 'Archive' as a category folder.")
+    print("  -it       Ignores Trash: notes in it will be ignored.")
+    print("  -ia       Ignores Archive: notes in it will be ignored.")
+
 
 
 def try_mkdir(path):
@@ -274,6 +276,7 @@ else:
     print_help()
     sys.exit()
 
+no_delete = "-s" in sys.argv
 debug_mode = "-v" in sys.argv
 ignore_trash = "-it" in sys.argv
 ignore_archive = "-ia" in sys.argv
@@ -366,7 +369,7 @@ for md_file_path in files_in_dest:
         if entry["path"] == md_file_path:
             file_in_db = True
             break
-    if not file_in_db:
+    if not file_in_db and not no_delete:
         dbgln(f"File {md_file_path} is not in database and will be deleted.")
         os.remove(md_file_path)
         file_deletions += 1
