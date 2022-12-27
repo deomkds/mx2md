@@ -9,41 +9,6 @@ import re
 from zipfile import ZipFile
 
 
-def dbgln(*args):
-    if debug_mode:
-        print(*args)
-
-
-def list_files(path, extension):
-    files = os.scandir(path)
-    filtered = []
-    for file in files:
-        if file.name.endswith(extension):
-            filtered.append(file)
-    return filtered
-
-
-def list_files_recursively(path, extension):
-    files = os.walk(path, topdown=True)
-    filtered = []
-    for (root, dirs, files) in files:
-        for items in files:
-            file_path = os.path.join(root, items)
-            if file_path.endswith(extension):
-                filtered.append(file_path)
-    return filtered
-
-
-def epoch_to_readable(timestamp, date_format):
-    timestamp_string = time.ctime(timestamp)       # As a timestamp string.
-    time_object = time.strptime(timestamp_string)  # To a timestamp object.
-    return time.strftime(date_format, time_object)      # To my format.
-
-
-def set_original_timestamp(path, mtime, ctime):
-    os.utime(path, (mtime, ctime))
-
-
 class Note:
     def __init__(self, memorix_entry, categories):
         self._entry = memorix_entry
@@ -51,10 +16,14 @@ class Note:
 
         self.title = self.determine_title()
         self.id = self.determine_id()
+        self.flag = self.determine_flag()
+        self.font_size = self.determine_font_size()
         self.ctime = self.determine_ctime()
         self.mtime = self.determine_mtime()
         self.category = self.determine_category()
         self.content = self.determine_content()
+        self.attachments = self.determine_attachments()
+        self.save_dir = self.determine_save_dir()
         self.file_name = self.determine_file_name()
 
     def determine_title(self):
@@ -65,6 +34,40 @@ class Note:
 
     def determine_id(self):
         return self._entry["sections"][0]["id"]
+
+    def determine_flag(self):
+        return self._entry["flags"]
+
+    def is_trashed(self):
+        return test_bit(self.flag, 1)
+
+    def is_archived(self):
+        return test_bit(self.flag, 12)
+
+    def is_pinned(self):
+        return test_bit(self.flag, 10)
+
+    def is_list(self):
+        return test_bit(self.flag, 2)
+
+    def checked_to_bottom(self):
+        return test_bit(self.flag, 4)
+
+    def determine_font_size(self):
+        bit_5 = test_bit(self.flag, 5)
+        bit_6 = test_bit(self.flag, 6)
+        bit_7 = test_bit(self.flag, 7) # Exclusive. If this is True, the others will always be False.
+
+        if bit_7:
+            return "Tiny"
+        elif bit_5 and not bit_6:
+            return "Large"
+        elif not bit_5 and bit_6:
+            return "Huge"
+        elif bit_5 and bit_6:
+            return "Small"
+        else:
+            return "Normal"
 
     def determine_ctime(self):
         return float(self._entry["createdMillis"]) / 1000
@@ -91,6 +94,19 @@ class Note:
                     text_content += f'- [ ] {list_item["text"]}\n'
             return text_content
 
+    def determine_attachments(self):
+        return self._entry["attachments"]
+
+    def determine_save_dir(self):
+        if self.is_trashed() and use_trash_category and not ignore_trash:
+            path = os.path.join(dest_path, "Trash")
+        elif self.is_archived() and use_archive_category and not ignore_archive:
+            path = os.path.join(dest_path, "Archive")
+        else:
+            path = dest_path
+
+        return os.path.join(path, self.category)
+
     def determine_file_name(self):
         prefix = epoch_to_readable(self.ctime, "%Y-%m-%d")
         # Removes special characters in order to make safe filenames for Windows/OneDrive.
@@ -104,25 +120,6 @@ class Note:
         with open(path, "w") as destination:
             destination.write(self.content)
         set_original_timestamp(path, self.mtime, self.ctime)
-
-
-def find_latest_backup(path):
-    extension = ".mxbk"
-    backups = list_files(path, extension)
-
-    if not backups:
-        return None
-
-    most_recent_time = 0.0
-    most_recent_indx = 0
-
-    for index, backup in enumerate(backups):
-        creation_time = os.path.getctime(backup.path)
-        if creation_time > most_recent_time:
-            most_recent_time = creation_time
-            most_recent_indx = index
-
-    return backups[most_recent_indx].path
 
 
 class MemorixDB:
@@ -170,6 +167,72 @@ class SyncDB:
             json_db.write(parsed_data)
 
 
+def test_bit(int_type, offset):
+    # https://wiki.python.org/moin/BitManipulation
+    # testBit() returns a nonzero result, 2**offset, if the bit at 'offset' is one.
+    # Slightly modified by me to return a boolean value.
+
+    mask = 1 << offset
+    if (int_type & mask) != 0:
+        return True
+    else:
+        return False
+
+
+def dbgln(*args):
+    if debug_mode:
+        print(*args)
+
+
+def list_files(path, extension):
+    files = os.scandir(path)
+    filtered = []
+    for file in files:
+        if file.name.endswith(extension):
+            filtered.append(file)
+    return filtered
+
+
+def list_files_recursively(path, extension):
+    files = os.walk(path, topdown=True)
+    filtered = []
+    for (root, dirs, files) in files:
+        for items in files:
+            file_path = os.path.join(root, items)
+            if file_path.endswith(extension):
+                filtered.append(file_path)
+    return filtered
+
+
+def epoch_to_readable(timestamp, date_format):
+    timestamp_string = time.ctime(timestamp)       # As a timestamp string.
+    time_object = time.strptime(timestamp_string)  # To a timestamp object.
+    return time.strftime(date_format, time_object)      # To my format.
+
+
+def set_original_timestamp(path, mtime, ctime):
+    os.utime(path, (mtime, ctime))
+
+
+def find_latest_backup(path):
+    extension = ".mxbk"
+    backups = list_files(path, extension)
+
+    if not backups:
+        return None
+
+    most_recent_time = 0.0
+    most_recent_indx = 0
+
+    for index, backup in enumerate(backups):
+        creation_time = os.path.getctime(backup.path)
+        if creation_time > most_recent_time:
+            most_recent_time = creation_time
+            most_recent_indx = index
+
+    return backups[most_recent_indx].path
+
+
 def print_help():
     print("Usage: python3 mx2md.py [OPTION]...")
     print("Convert a Memorix Backup file (*.mxbk) into a folder of Markdown files.")
@@ -179,6 +242,19 @@ def print_help():
     print("  -o        Specifies the destination folder.")
     print("  -v        Verbose output.")
     print("  -h        Prints this help.")
+    print("  -ct       Create 'Trash' as a category folder.")
+    print("  -ca       Create 'Archive' as a category folder.")
+    print("  -it       Ignore Trash: notes in it will be ignored.")
+    print("  -ia       Ignore Archive: notes in it will be ignored.")
+
+
+def try_mkdir(path):
+    if not os.path.exists(path):
+        try:
+            os.mkdir(path)
+        except OSError as error:
+            print(f"Error: {error}")
+            sys.exit()
 
 
 # Main application routine. =========================================================
@@ -198,10 +274,11 @@ else:
     print_help()
     sys.exit()
 
-if "-v" in sys.argv:
-    debug_mode = True
-else:
-    debug_mode = False
+debug_mode = "-v" in sys.argv
+ignore_trash = "-it" in sys.argv
+ignore_archive = "-ia" in sys.argv
+use_trash_category = "-ct" in sys.argv
+use_archive_category = "-ca" in sys.argv
 
 if os.path.exists(memorix_db_path):
     if memorix_db_path.endswith(".mxbk"):
@@ -217,14 +294,7 @@ else:
     sys.exit()
 
 dbgln(f"Data will be exported to folder '{dest_path}'.")
-
-try:
-    os.mkdir(dest_path)
-except FileExistsError:
-    pass
-except OSError as error:
-    print(f"Error: {error}")
-    sys.exit()
+try_mkdir(dest_path)
 
 mxdb = MemorixDB(memorix_db_file)
 sync_db = SyncDB(dest_path)
@@ -235,21 +305,24 @@ for i, j in enumerate(mxdb.notes_list, start=1):
     dbgln(f"\nNote {i}: processing note {i} out of {mxdb.notes_count}.")
     note = Note(j, mxdb.categories)
 
-    save_dir = os.path.join(dest_path, note.category)
+    if note.is_trashed() and use_trash_category:
+        dbgln(f"Note {i}: note is in the Trash.")
+        try_mkdir(os.path.dirname(note.save_dir))
+    elif note.is_archived() and use_archive_category:
+        dbgln(f"Note {i}: note is Archived.")
+        try_mkdir(os.path.dirname(note.save_dir))
 
     dbgln(f"Note {i}: note will be saved in '{note.category}' subfolder.")
-    if not os.path.exists(save_dir):
-        dbgln(f"Note {i}: subfolder for '{note.category}' does not exist and will be created.")
-        os.mkdir(save_dir)
+    try_mkdir(note.save_dir)
+
+    dbgln(f"Note {i}: filename will be '{note.file_name}.md'.")
+    full_path = os.path.join(note.save_dir, f"{note.file_name}.md")
 
     name_counter = 1
-    full_path = os.path.join(save_dir, f"{note.file_name}.md")
-    dbgln(f"Note {i}: filename will be '{note.file_name}.md'.")
-
     while True:
         # To avoid having two files with the same name in the same directory.
         if full_path.lower() in every_filename:
-            full_path = os.path.join(save_dir, f"{note.file_name} {name_counter}.md")
+            full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
             dbgln(f"Note {i}: filename already exists, will try '{note.file_name} {name_counter}.md'.")
             name_counter += 1
         else:
@@ -257,6 +330,10 @@ for i, j in enumerate(mxdb.notes_list, start=1):
             break
 
     in_db = False
+
+    # FIXME: add version number to the database
+    #        to recreate entire folder structure
+    #        after script updates
 
     for entry in sync_db.entries:
         if entry["id"] == note.id:
@@ -279,7 +356,8 @@ sync_db.write()
 dbgln("\nDatabase written to disk.")
 
 dbgln(f"\nChecking for deletions.")
-deletions = 0
+file_deletions = 0
+folder_deletions = 0
 files_in_dest = list_files_recursively(dest_path, ".md")
 
 for md_file_path in files_in_dest:
@@ -291,6 +369,9 @@ for md_file_path in files_in_dest:
     if not file_in_db:
         dbgln(f"File {md_file_path} is not in database and will be deleted.")
         os.remove(md_file_path)
-        deletions += 1
+        file_deletions += 1
+        if not os.listdir(os.path.dirname(md_file_path)):
+            os.rmdir(os.path.dirname(md_file_path))
+            folder_deletions += 1
 
-dbgln(f"{deletions} file(s) deleted.")
+dbgln(f"File(s) deleted: {file_deletions} file(s).\nFolder(s) deleted: {folder_deletions} folder(s).")
