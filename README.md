@@ -16,12 +16,13 @@ python3 mx2md.py -i [input file or folder] -o [output folder] [options]
 |:-------------:|:--------------------------------------------------------------------------------------------------------------------------------------------------------|
 | -i            | Specifies an input file or a folder containing Memorix Backup files (\*.mxbk). When a folder is specified, the most recent '\*.mxbk' file will be used. |
 | -o            | Specifies the destination folder. A subfolder called Memorix will be created at the specified path.                                                     |
-| -v            | Verbose output.                                                                                                                                         |
+| -s            | Enables Safe Mode and don't delete any file.                                                                                                            |
+| -v            | Enables verbose output with debug information.                                                                                                          |
 | -h            | Prints help.                                                                                                                                            |
-| -ct           | Create 'Trash' as a category folder.                                                                                                                    |
-| -ca           | Create 'Archive' as a category folder.                                                                                                                  |
-| -it           | Ignore Trash: notes in it will be ignored.                                                                                                              |
-| -ia           | Ignore Archive: notes in it will be ignored.                                                                                                            |
+| -ct           | Creates 'Trash' as a category folder.                                                                                                                   |
+| -ca           | Creates 'Archive' as a category folder.                                                                                                                 |
+| -it           | Ignores Trash: notes in it will be ignored.                                                                                                             |
+| -ia           | Ignores Archive: notes in it will be ignored.                                                                                                           |
 
 # Example
 This can be used to maintain a copy of your Memorix notes as Markdown files. One way to do use the script would be:
@@ -34,10 +35,10 @@ mx2md maintains a database in JSON to keep track of synced files. It will automa
 
 # Limitations
 At the moment, mx2md can't do the following things:
-- It's not possible to disable the deletion of notes that are not in the Memorix database (sync is always mirror), but the script will never modify or delete the Memorix backup file.
 - It does not extract images from notes, only text.
 - It does not extract notes stored in the Vault. This will never happen (probably).
 - It does not maintain information about reminders.
+- ~~It's not possible to disable the deletion of notes that are not in the Memorix database (sync is always mirror), but the script will never modify or delete the Memorix backup file.~~
 - ~~It does not distinguish between archived notes or notes in the trash. Those will be extracted normally and placed alongside non trashed and non archived notes.~~
 
 # License
