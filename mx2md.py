@@ -105,9 +105,9 @@ class Note:
         return self._entry["attachments"]
 
     def determine_save_dir(self):
-        if self.is_trashed() and use_trash_category and not ignore_trash:
+        if self.is_trashed() and separate_trash and not ignore_trash:
             path = os.path.join(dest_path, "Trash")
-        elif self.is_archived() and use_archive_category and not ignore_archive:
+        elif self.is_archived() and separate_archive and not ignore_archive:
             path = os.path.join(dest_path, "Archive")
         else:
             path = dest_path
@@ -249,19 +249,23 @@ def find_latest_backup(path):
 
 
 def print_help():
-    print("Usage: python3 mx2md.py [OPTION]...")
+    print("Usage: python3 mx2md.py [OPTION]...\n")
     print("Convert a Memorix Backup file (*.mxbk) into a folder of Markdown files.")
-    print("Supports subsequent incremental syncs using a database and tracking file changes.\n")
+    print("Supports incremental syncs using a database to track file changes.\n")
+    print("Required arguments:")
     print("  -i        Specifies an input file or a folder containing Memorix Backup files (*.mxbk).")
     print("            When a folder is specified, the most recent '*.mxbk' file will be used.\n")
-    print("  -o        Specifies the destination folder.")
-    print("  -s        Enables Safe Mode and don't delete any file.")
-    print("  -v        Enables verbose output with debug information.")
-    print("  -h        Prints this help.")
-    print("  -ct       Creates 'Trash' as a category folder.")
-    print("  -ca       Creates 'Archive' as a category folder.")
-    print("  -it       Ignores Trash: notes in it will be ignored.")
-    print("  -ia       Ignores Archive: notes in it will be ignored.")
+    print("  -o        Specifies the destination folder.\n")
+    print("Optional arguments:")
+    print("  --safe-mode                 Enables Safe Mode where no files are deleted from disk.")
+    print("  --verbose                   Enables verbose output with debug information.")
+    print("  --help                      Prints this help.")
+    print("  --ignore-trash              Don't extract notes from the trash.")
+    print("  --ignore-archive            Don't extract archived notes.")
+    print("  --ignore-attachments        Don't extract note attachments.")
+    print("  --separate-trash            Place notes from the trash in a separate 'Trash' folder.")
+    print("  --separate-archive          Place archived notes in a separate 'Archive' folder.")
+    print("  --separate-attachments      Place note attachments in a separate 'Attachments' folder.")
 
 
 def try_mkdir(path):
@@ -278,7 +282,7 @@ memorix_db_path = ""
 memorix_db_file = ""
 dest_path = ""
 
-if len(sys.argv) < 5 or ("-h" in sys.argv):
+if len(sys.argv) < 5 or ("--help" in sys.argv):
     print_help()
     sys.exit()
 
@@ -286,18 +290,20 @@ if ("-i" in sys.argv) and ("-o" in sys.argv):
     memorix_db_path = sys.argv[sys.argv.index("-i") + 1]
     dest_path = os.path.join(sys.argv[sys.argv.index("-o") + 1], "Memorix")
 else:
-    print("ERROR: Both input and output must be specified.\n")
+    print("ERROR: Input and output must be specified.\n")
     print_help()
     sys.exit()
 
-no_delete = "-s" in sys.argv
-debug_mode = "-v" in sys.argv
-ignore_trash = "-it" in sys.argv
-ignore_archive = "-ia" in sys.argv
-ignore_attachments = "-iat" in sys.argv
-use_trash_category = "-ct" in sys.argv
-use_archive_category = "-ca" in sys.argv
-separate_attachments = "-sa" in sys.argv
+safe_mode = "--safe-mode" in sys.argv
+debug_mode = "--verbose" in sys.argv
+
+ignore_trash = "--ignore-trash" in sys.argv
+ignore_archive = "--ignore-archive" in sys.argv
+ignore_attachments = "--ignore-attachments" in sys.argv
+
+separate_trash = "--separate-trash" in sys.argv
+separate_archive = "--separate-archive" in sys.argv
+separate_attachments = "--separate-attachments" in sys.argv
 
 if os.path.exists(memorix_db_path):
     if memorix_db_path.endswith(".mxbk"):
@@ -324,10 +330,10 @@ for i, j in enumerate(mxdb.notes, start=1):
     dbgln(f"\nNote {i}: processing note {i} out of {mxdb.notes_count}.")
     note = Note(j, mxdb.categories)
 
-    if note.is_trashed() and use_trash_category:
+    if note.is_trashed() and separate_trash:
         dbgln(f"Note {i}: note is in the Trash.")
         try_mkdir(os.path.dirname(note.save_dir))
-    elif note.is_archived() and use_archive_category:
+    elif note.is_archived() and separate_archive:
         dbgln(f"Note {i}: note is Archived.")
         try_mkdir(os.path.dirname(note.save_dir))
 
@@ -398,7 +404,7 @@ for md_file_path in files_in_dest:
         if entry["path"] == md_file_path:
             file_in_db = True
             break
-    if not file_in_db and not no_delete:
+    if not file_in_db and not safe_mode:
         dbgln(f"File {md_file_path} is not in database and will be deleted.")
         os.remove(md_file_path)
         file_deletions += 1
