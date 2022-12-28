@@ -21,8 +21,8 @@ class Note:
         self.ctime = self.determine_ctime()
         self.mtime = self.determine_mtime()
         self.category = self.determine_category()
-        self.content = self.determine_content()
         self.attachments = self.determine_attachments()
+        self.content = self.determine_content()
         self.save_dir = self.determine_save_dir()
         self.file_name = self.determine_file_name()
 
@@ -81,9 +81,16 @@ class Note:
                 return item["title"]
 
     def determine_content(self):
+        if self.attachments:
+            attachments = f"\n\nAttachments ({len(self.attachments)}):"
+            for item in self.attachments:
+                attachments += f"\n![[{item}]]\n"
+        else:
+            attachments = ""
+
         if self._entry["sections"][0]["checkable"] is False:
             # For normal notes, that have a single section.
-            return self._entry["sections"][0]["text"]
+            return self._entry["sections"][0]["text"] + attachments
         else:
             # For list notes, that have multiple sections (each line is a section).
             text_content = ""
@@ -92,7 +99,7 @@ class Note:
                     text_content += f'- [x] {list_item["text"]}\n'
                 else:
                     text_content += f'- [ ] {list_item["text"]}\n'
-            return text_content
+            return text_content + attachments
 
     def determine_attachments(self):
         return self._entry["attachments"]
@@ -109,7 +116,7 @@ class Note:
 
     def determine_file_name(self):
         prefix = epoch_to_readable(self.ctime, "%Y-%m-%d")
-        # Removes special characters in order to make safe filenames for Windows/OneDrive.
+        # Removes special characters to make filenames for Windows/OneDrive.
         middle = re.sub(r'[^\w_. -]', '', self.title).strip()
         if middle == "":
             middle = "Note " + str(self._entry["order"])
@@ -127,7 +134,7 @@ class MemorixDB:
         self._backup_file = path
 
         self.data = self.extract_data()
-        self.notes_list = self.data["entries"]
+        self.notes = self.data["entries"]
         self.notes_count = len(self.data["entries"])
         self.categories = self.extract_categories()
 
@@ -143,6 +150,12 @@ class MemorixDB:
 
     def extract_categories(self):
         return json.loads(self.data["prefs"]["pref_categories"])
+
+    def write_attachment(self, attachment_name, path):
+        with ZipFile(self._backup_file, "r") as zip_file:
+            for file_name in zip_file.namelist():
+                if file_name == attachment_name:
+                    zip_file.extract(attachment_name, path=path)
 
 
 class SyncDB:
@@ -249,7 +262,6 @@ def print_help():
     print("  -ia       Ignores Archive: notes in it will be ignored.")
 
 
-
 def try_mkdir(path):
     if not os.path.exists(path):
         try:
@@ -280,8 +292,10 @@ no_delete = "-s" in sys.argv
 debug_mode = "-v" in sys.argv
 ignore_trash = "-it" in sys.argv
 ignore_archive = "-ia" in sys.argv
+ignore_attachments = "-iat" in sys.argv
 use_trash_category = "-ct" in sys.argv
 use_archive_category = "-ca" in sys.argv
+separate_attachments = "-sa" in sys.argv
 
 if os.path.exists(memorix_db_path):
     if memorix_db_path.endswith(".mxbk"):
@@ -303,7 +317,7 @@ mxdb = MemorixDB(memorix_db_file)
 sync_db = SyncDB(dest_path)
 every_filename = []
 
-for i, j in enumerate(mxdb.notes_list, start=1):
+for i, j in enumerate(mxdb.notes, start=1):
 
     dbgln(f"\nNote {i}: processing note {i} out of {mxdb.notes_count}.")
     note = Note(j, mxdb.categories)
@@ -323,7 +337,7 @@ for i, j in enumerate(mxdb.notes_list, start=1):
 
     name_counter = 1
     while True:
-        # To avoid having two files with the same name in the same directory.
+        # To avoid files with same name in a directory.
         if full_path.lower() in every_filename:
             full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
             dbgln(f"Note {i}: filename already exists, will try '{note.file_name} {name_counter}.md'.")
@@ -354,6 +368,19 @@ for i, j in enumerate(mxdb.notes_list, start=1):
         dbgln(f"Note {i}: note not found in database and will be added.")
         note.write_to_disk(full_path)
         sync_db.add_note(note.id, full_path, note.mtime)
+
+    if note.attachments and not ignore_attachments:
+        dbgln(f"Note {i}: note has {len(note.attachments)} attachments.")
+        if separate_attachments:
+            attachment_dir = os.path.join(dest_path, "Attachments")
+            try_mkdir(attachment_dir)
+        else:
+            attachment_dir = note.save_dir
+        dbgln(f"Note {i}: attachments will be saved in '{os.path.basename(attachment_dir)}' directory.")
+
+        for attached_file in note.attachments:
+            mxdb.write_attachment(attached_file, attachment_dir)
+
 
 sync_db.write()
 dbgln("\nDatabase written to disk.")
