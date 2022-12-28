@@ -56,7 +56,7 @@ class Note:
     def determine_font_size(self):
         bit_5 = test_bit(self.flag, 5)
         bit_6 = test_bit(self.flag, 6)
-        bit_7 = test_bit(self.flag, 7) # Exclusive. If this is True, the others will always be False.
+        bit_7 = test_bit(self.flag, 7)  # Exclusive. If this is True, the others will always be False.
 
         if bit_7:
             return "Tiny"
@@ -155,24 +155,26 @@ class MemorixDB:
         with ZipFile(self._backup_file, "r") as zip_file:
             for file_name in zip_file.namelist():
                 if file_name == attachment_name:
-                    zip_file.extract(attachment_name, path=path)
+                    if not os.path.exists(os.path.join(path, attachment_name)):
+                        zip_file.extract(attachment_name, path=path)
 
 
 class SyncDB:
     def __init__(self, path):
         self.path = os.path.join(path, "sync_db.json")
         self.data = self.read()
-        self.entries = self.data["entries"]
+        self.notes = self.data["notes"]
+        self.attachments = self.data["attachments"]
 
     def add_note(self, note_id, path, mtime):
-        self.entries.append({"id": note_id, "path": path, "mtime": mtime})
+        self.notes.append({"id": note_id, "path": path, "mtime": mtime})
 
     def read(self):
         if os.path.exists(self.path):
             with open(self.path, "r") as json_db:
                 return json.load(json_db)
         else:
-            return {"entries": []}
+            return {"notes": [], "attachments": []}
 
     def write(self):
         parsed_data = json.dumps(self.data)
@@ -352,7 +354,7 @@ for i, j in enumerate(mxdb.notes, start=1):
     #        to recreate entire folder structure
     #        after script updates
 
-    for entry in sync_db.entries:
+    for entry in sync_db.notes:
         if entry["id"] == note.id:
             dbgln(f"Note {i}: note found in database.")
             in_db = True
@@ -392,7 +394,7 @@ files_in_dest = list_files_recursively(dest_path, ".md")
 
 for md_file_path in files_in_dest:
     file_in_db = False
-    for entry in sync_db.entries:
+    for entry in sync_db.notes:
         if entry["path"] == md_file_path:
             file_in_db = True
             break
