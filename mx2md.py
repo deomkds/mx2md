@@ -8,6 +8,7 @@ import time
 import re
 from zipfile import ZipFile
 from datetime import datetime
+import hashlib
 
 
 class Note:
@@ -18,6 +19,7 @@ class Note:
         self.title = self.determine_title()
         self.id = self.determine_id()
         self.flag = self.determine_flag()
+        self.order = self.determine_order()
         self.font_size = self.determine_font_size()
         self.ctime = self.determine_ctime()
         self.mtime = self.determine_mtime()
@@ -26,6 +28,7 @@ class Note:
         self.content = self.determine_content()
         self.save_dir = self.determine_save_dir()
         self.file_name = self.determine_file_name()
+        self.hash = self.generate_hash()
 
     def determine_title(self):
         if ("title" in self._entry) and (self._entry["title"].strip() != ""):
@@ -38,6 +41,9 @@ class Note:
 
     def determine_flag(self):
         return self._entry["flags"]
+
+    def determine_order(self):
+        return self._entry["order"]
 
     def is_trashed(self):
         return test_bit(self.flag, 1)
@@ -128,6 +134,11 @@ class Note:
         with open(path, "w") as destination:
             destination.write(self.content)
         set_original_timestamp(path, self.mtime, self.ctime)
+
+    def generate_hash(self):
+        # Changes in order will make it think it's a new note, but I think that's okay.
+        byte_string = f"{self.id}-{self.order}".encode("utf-8")
+        return hashlib.md5(byte_string).hexdigest()
 
 
 class MemorixDB:
@@ -380,8 +391,8 @@ if __name__ == "__main__":
         #        after script updates
 
         for entry in sync_db.notes:
-            if entry["id"] == note.id:
-                log(f"Note found in database.")
+            if entry["id"] == note.hash:
+                log(f"Note with hash '{note.hash}' already in database.")
                 in_db = True
                 if entry["mtime"] < note.mtime or not os.path.exists(full_path):
                     log(f"File is outdated and will be updated.")
@@ -392,9 +403,9 @@ if __name__ == "__main__":
                 break
 
         if not in_db:
-            log(f"Note not found in database and will be added.")
             note.write_to_disk(full_path)
-            sync_db.add_note(note.id, full_path, note.mtime)
+            sync_db.add_note(note.hash, full_path, note.mtime)
+            log(f"Added new note with hash '{note.hash}' to the database.")
 
         if note.attachments and not ignore_attachments:
             log(f"Note has {len(note.attachments)} attachments.")
