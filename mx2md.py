@@ -7,6 +7,7 @@ import sys
 import time
 import re
 from zipfile import ZipFile
+from datetime import datetime
 
 
 class Note:
@@ -182,6 +183,24 @@ class SyncDB:
             json_db.write(parsed_data)
 
 
+def log(text, essential=False, line_break=False):
+    if debug_mode or essential:
+        moment_obj = datetime.now()
+        moment = moment_obj.strftime("%Y-%m-%d %H:%M:%S")
+        path = os.path.join(dest_path, 'log.txt')
+        br = f"\n" if line_break else f""
+        note_number = f"Note {current_file} -> " if current_file else f""
+        output_line = f"{br}{moment}: {note_number}{text}"
+        debug_print(output_line)
+        with open(path, "a") as log_file:
+            log_file.write(f"{output_line}\n")
+
+
+def debug_print(*args):
+    if debug_mode:
+        print(*args)
+
+
 def test_bit(int_type, offset):
     # https://wiki.python.org/moin/BitManipulation
     # testBit() returns a nonzero result, 2**offset, if the bit at 'offset' is one.
@@ -192,11 +211,6 @@ def test_bit(int_type, offset):
         return True
     else:
         return False
-
-
-def dbgln(*args):
-    if debug_mode:
-        print(*args)
 
 
 def list_files(path, extension):
@@ -278,138 +292,144 @@ def try_mkdir(path):
 
 
 # Main application routine. =========================================================
-memorix_db_path = ""
-memorix_db_file = ""
-dest_path = ""
+if __name__ == "__main__":
+    memorix_db_path = ""
+    memorix_db_file = ""
+    dest_path = ""
 
-if len(sys.argv) < 5 or ("--help" in sys.argv):
-    print_help()
-    sys.exit()
-
-if ("-i" in sys.argv) and ("-o" in sys.argv):
-    memorix_db_path = sys.argv[sys.argv.index("-i") + 1]
-    dest_path = os.path.join(sys.argv[sys.argv.index("-o") + 1], "Memorix")
-else:
-    print("ERROR: Input and output must be specified.\n")
-    print_help()
-    sys.exit()
-
-safe_mode = "--safe-mode" in sys.argv
-debug_mode = "--verbose" in sys.argv
-
-ignore_trash = "--ignore-trash" in sys.argv
-ignore_archive = "--ignore-archive" in sys.argv
-ignore_attachments = "--ignore-attachments" in sys.argv
-
-separate_trash = "--separate-trash" in sys.argv
-separate_archive = "--separate-archive" in sys.argv
-separate_attachments = "--separate-attachments" in sys.argv
-
-if os.path.exists(memorix_db_path):
-    if memorix_db_path.endswith(".mxbk"):
-        memorix_db_file = memorix_db_path
-    else:
-        memorix_db_file = find_latest_backup(memorix_db_path)
-
-    if memorix_db_file is None:
-        print(f"Memorix Database file not found in folder '{memorix_db_path}'.")
+    if len(sys.argv) < 5 or ("--help" in sys.argv):
+        print_help()
         sys.exit()
-else:
-    print("Memorix Database file or folder not found.")
-    sys.exit()
 
-dbgln(f"Data will be exported to folder '{dest_path}'.")
-try_mkdir(dest_path)
+    if ("-i" in sys.argv) and ("-o" in sys.argv):
+        memorix_db_path = sys.argv[sys.argv.index("-i") + 1]
+        dest_path = os.path.join(sys.argv[sys.argv.index("-o") + 1], "Memorix")
+    else:
+        print("ERROR: Input and output must be specified.\n")
+        print_help()
+        sys.exit()
 
-mxdb = MemorixDB(memorix_db_file)
-sync_db = SyncDB(dest_path)
-every_filename = []
+    safe_mode = "--safe-mode" in sys.argv
+    debug_mode = "--verbose" in sys.argv
 
-for i, j in enumerate(mxdb.notes, start=1):
+    ignore_trash = "--ignore-trash" in sys.argv
+    ignore_archive = "--ignore-archive" in sys.argv
+    ignore_attachments = "--ignore-attachments" in sys.argv
 
-    dbgln(f"\nNote {i}: processing note {i} out of {mxdb.notes_count}.")
-    note = Note(j, mxdb.categories)
+    separate_trash = "--separate-trash" in sys.argv
+    separate_archive = "--separate-archive" in sys.argv
+    separate_attachments = "--separate-attachments" in sys.argv
 
-    if note.is_trashed() and separate_trash:
-        dbgln(f"Note {i}: note is in the Trash.")
-        try_mkdir(os.path.dirname(note.save_dir))
-    elif note.is_archived() and separate_archive:
-        dbgln(f"Note {i}: note is Archived.")
-        try_mkdir(os.path.dirname(note.save_dir))
+    current_file = 0
 
-    dbgln(f"Note {i}: note will be saved in '{note.category}' subfolder.")
-    try_mkdir(note.save_dir)
-
-    dbgln(f"Note {i}: filename will be '{note.file_name}.md'.")
-    full_path = os.path.join(note.save_dir, f"{note.file_name}.md")
-
-    name_counter = 1
-    while True:
-        # To avoid files with same name in a directory.
-        if full_path.lower() in every_filename:
-            full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
-            dbgln(f"Note {i}: filename already exists, will try '{note.file_name} {name_counter}.md'.")
-            name_counter += 1
+    if os.path.exists(memorix_db_path):
+        if memorix_db_path.endswith(".mxbk"):
+            memorix_db_file = memorix_db_path
         else:
-            every_filename.append(full_path.lower())
-            break
+            memorix_db_file = find_latest_backup(memorix_db_path)
 
-    in_db = False
+        if memorix_db_file is None:
+            print(f"Memorix Database file not found in folder '{memorix_db_path}'.")
+            sys.exit()
+    else:
+        print("Memorix Database file or folder not found.")
+        sys.exit()
 
-    # FIXME: add version number to the database
-    #        to recreate entire folder structure
-    #        after script updates
+    log(f"Data will be exported to folder '{dest_path}'.")
+    try_mkdir(dest_path)
 
-    for entry in sync_db.notes:
-        if entry["id"] == note.id:
-            dbgln(f"Note {i}: note found in database.")
-            in_db = True
-            if entry["mtime"] < note.mtime or not os.path.exists(full_path):
-                dbgln(f"Note {i}: file is outdated and will be updated.")
-                note.write_to_disk(full_path)
-                entry["mtime"] = note.mtime
+    mxdb = MemorixDB(memorix_db_file)
+    sync_db = SyncDB(dest_path)
+    every_filename = []
+
+    for i, j in enumerate(mxdb.notes, start=1):
+
+        current_file = i
+
+        log(f"Processing note {i} out of {mxdb.notes_count}.", line_break=True)
+        note = Note(j, mxdb.categories)
+
+        if note.is_trashed() and separate_trash:
+            log(f"Note is in the Trash.")
+            try_mkdir(os.path.dirname(note.save_dir))
+        elif note.is_archived() and separate_archive:
+            log(f"Note is Archived.")
+            try_mkdir(os.path.dirname(note.save_dir))
+
+        log(f"Note will be saved in '{note.category}' subfolder.")
+        try_mkdir(note.save_dir)
+
+        log(f"Filename will be '{note.file_name}.md'.")
+        full_path = os.path.join(note.save_dir, f"{note.file_name}.md")
+
+        name_counter = 1
+        while True:
+            # To avoid files with same name in a directory.
+            if full_path.lower() in every_filename:
+                full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
+                log(f"Filename already exists, will try '{note.file_name} {name_counter}.md'.")
+                name_counter += 1
             else:
-                dbgln(f"Note {i}: file is most recent and will be ignored.")
-            break
+                every_filename.append(full_path.lower())
+                break
 
-    if not in_db:
-        dbgln(f"Note {i}: note not found in database and will be added.")
-        note.write_to_disk(full_path)
-        sync_db.add_note(note.id, full_path, note.mtime)
+        in_db = False
 
-    if note.attachments and not ignore_attachments:
-        dbgln(f"Note {i}: note has {len(note.attachments)} attachments.")
-        if separate_attachments:
-            attachment_dir = os.path.join(dest_path, "Attachments")
-            try_mkdir(attachment_dir)
-        else:
-            attachment_dir = note.save_dir
-        dbgln(f"Note {i}: attachments will be saved in '{os.path.basename(attachment_dir)}' directory.")
+        # FIXME: add version number to the database
+        #        to recreate entire folder structure
+        #        after script updates
 
-        for attached_file in note.attachments:
-            mxdb.write_attachment(attached_file, attachment_dir)
+        for entry in sync_db.notes:
+            if entry["id"] == note.id:
+                log(f"Note found in database.")
+                in_db = True
+                if entry["mtime"] < note.mtime or not os.path.exists(full_path):
+                    log(f"File is outdated and will be updated.")
+                    note.write_to_disk(full_path)
+                    entry["mtime"] = note.mtime
+                else:
+                    log(f"File is most recent and will be ignored.")
+                break
 
+        if not in_db:
+            log(f"Note not found in database and will be added.")
+            note.write_to_disk(full_path)
+            sync_db.add_note(note.id, full_path, note.mtime)
 
-sync_db.write()
-dbgln("\nDatabase written to disk.")
+        if note.attachments and not ignore_attachments:
+            log(f"Note has {len(note.attachments)} attachments.")
+            if separate_attachments:
+                attachment_dir = os.path.join(dest_path, "Attachments")
+                try_mkdir(attachment_dir)
+            else:
+                attachment_dir = note.save_dir
+            log(f"Attachments will be saved in '{os.path.basename(attachment_dir)}' directory.")
 
-dbgln(f"\nChecking for deletions.")
-file_deletions = 0
-folder_deletions = 0
-files_in_dest = list_files_recursively(dest_path, ".md")
+            for attached_file in note.attachments:
+                mxdb.write_attachment(attached_file, attachment_dir)
 
-for md_file_path in files_in_dest:
-    file_in_db = False
-    for entry in sync_db.notes:
-        if entry["path"] == md_file_path:
-            file_in_db = True
-            break
-    if not file_in_db and not safe_mode:
-        dbgln(f"File {md_file_path} is not in database and will be deleted.")
-        os.remove(md_file_path)
-        file_deletions += 1
-        if not os.listdir(os.path.dirname(md_file_path)):
-            os.rmdir(os.path.dirname(md_file_path))
-            folder_deletions += 1
+    current_file = 0
 
-dbgln(f"File(s) deleted: {file_deletions} file(s).\nFolder(s) deleted: {folder_deletions} folder(s).")
+    sync_db.write()
+    log("Database written to disk.", line_break=True)
+
+    log(f"Checking for deletions.", line_break=True)
+    file_deletions = 0
+    folder_deletions = 0
+    files_in_dest = list_files_recursively(dest_path, ".md")
+
+    for md_file_path in files_in_dest:
+        file_in_db = False
+        for entry in sync_db.notes:
+            if entry["path"] == md_file_path:
+                file_in_db = True
+                break
+        if not file_in_db and not safe_mode:
+            log(f"File {md_file_path} is not in database and will be deleted.")
+            os.remove(md_file_path)
+            file_deletions += 1
+            if not os.listdir(os.path.dirname(md_file_path)):
+                os.rmdir(os.path.dirname(md_file_path))
+                folder_deletions += 1
+
+    log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).")
