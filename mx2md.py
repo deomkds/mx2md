@@ -301,7 +301,7 @@ def print_help():
     print("  -o        Specifies the destination folder.\n")
     print("Optional arguments:")
     print("  --safe-mode                 Enables Safe Mode where no files are deleted from disk.")
-    print("  --verbose                   Enables verbose output and logging for debugging.")
+    print("  --verbose                   Enables verbose output with debug information.")
     print("  --help                      Prints this help message.")
     print("  --skip-trash                Skip notes from the trash.")
     print("  --skip-archive              Skip archived notes.")
