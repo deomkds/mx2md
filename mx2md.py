@@ -219,6 +219,8 @@ def log(text, essential=False, line_break=False):
         note_number = f"Note {current_file} -> " if current_file else f""
         output_line = f"{br}{moment}: {note_number}{text}"
         debug_print(output_line)
+        if essential:
+            print(output_line)
         with open(path, "a") as log_file:
             log_file.write(f"{output_line}\n")
 
