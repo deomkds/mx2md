@@ -34,7 +34,7 @@ class Note:
         if ("title" in self._entry) and (self._entry["title"].strip() != ""):
             return self._entry["title"].strip()
         else:
-            return "Note " + str(self._entry["order"])
+            return f"Note {self._entry["order"]}"
 
     def determine_id(self):
         return self._entry["sections"][0]["id"]
@@ -274,23 +274,23 @@ def find_latest_backup(path):
 
 
 def print_help():
-    print("Usage: python3 mx2md.py [OPTION]...\n")
-    print("Convert a Memorix Backup file (*.mxbk) into a folder of Markdown files.")
-    print("Supports incremental syncs using a database to track file changes.\n")
+    print("Usage: python3 mx2md.py [OPTIONS]...\n")
+    print("Convert a Memorix Backup file (*.mxbk) to a folder of Markdown files.")
+    print("Supports incremental syncs, tracking changes with a database.\n")
     print("Required arguments:")
-    print("  -i        Specifies an input file or a folder containing Memorix Backup files (*.mxbk).")
-    print("            When a folder is specified, the most recent '*.mxbk' file will be used.\n")
+    print("  -i        Specifies an input backup file (*.mxbk) or a folder.")
+    print("            When specifying a folder, the most recent backup file will be used.\n")
     print("  -o        Specifies the destination folder.\n")
     print("Optional arguments:")
     print("  --safe-mode                 Enables Safe Mode where no files are deleted from disk.")
-    print("  --verbose                   Enables verbose output with debug information.")
-    print("  --help                      Prints this help.")
+    print("  --verbose                   Enables verbose output and logging for debugging.")
+    print("  --help                      Prints this help message.")
     print("  --ignore-trash              Don't extract notes from the trash.")
     print("  --ignore-archive            Don't extract archived notes.")
     print("  --ignore-attachments        Don't extract note attachments.")
     print("  --separate-trash            Place notes from the trash in a separate 'Trash' folder.")
     print("  --separate-archive          Place archived notes in a separate 'Archive' folder.")
-    print("  --separate-attachments      Place note attachments in a separate 'Attachments' folder.")
+    print("  --separate-attachments      Place attachments in a separate 'Attachments' folder.")
 
 
 def try_mkdir(path):
@@ -367,10 +367,10 @@ if __name__ == "__main__":
             log(f"Note is Archived.")
             try_mkdir(os.path.dirname(note.save_dir))
 
-        log(f"Note will be saved in '{note.category}' subfolder.")
+        log(f"Saving note in subfolder '{note.category}'.")
         try_mkdir(note.save_dir)
 
-        log(f"Filename will be '{note.file_name}.md'.")
+        log(f"Using '{note.file_name}.md' as filename.")
         full_path = os.path.join(note.save_dir, f"{note.file_name}.md")
 
         name_counter = 1
@@ -378,7 +378,7 @@ if __name__ == "__main__":
             # To avoid files with same name in a directory.
             if full_path.lower() in every_filename:
                 full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
-                log(f"Filename already exists, will try '{note.file_name} {name_counter}.md'.")
+                log(f"Filename already in use, trying '{note.file_name} {name_counter}.md'.")
                 name_counter += 1
             else:
                 every_filename.append(full_path.lower())
@@ -395,17 +395,17 @@ if __name__ == "__main__":
                 log(f"Note with hash '{note.hash}' already in database.")
                 in_db = True
                 if entry["mtime"] < note.mtime or not os.path.exists(full_path):
-                    log(f"File is outdated and will be updated.")
+                    log(f"Updating file changed at '{note.mtime}'.")
                     note.write_to_disk(full_path)
                     entry["mtime"] = note.mtime
                 else:
-                    log(f"File is most recent and will be ignored.")
+                    log(f"File is most recent.")
                 break
 
         if not in_db:
+            log(f"Adding new note with hash '{note.hash}' to the database.")
             note.write_to_disk(full_path)
             sync_db.add_note(note.hash, full_path, note.mtime)
-            log(f"Added new note with hash '{note.hash}' to the database.")
 
         if note.attachments and not ignore_attachments:
             log(f"Note has {len(note.attachments)} attachments.")
@@ -414,15 +414,15 @@ if __name__ == "__main__":
                 try_mkdir(attachment_dir)
             else:
                 attachment_dir = note.save_dir
-            log(f"Attachments will be saved in '{os.path.basename(attachment_dir)}' directory.")
+            log(f"Saving attachments in '{os.path.basename(attachment_dir)}' directory.")
 
             for attached_file in note.attachments:
                 mxdb.write_attachment(attached_file, attachment_dir)
 
     current_file = 0
 
+    log("Writing database to disk.", line_break=True)
     sync_db.write()
-    log("Database written to disk.", line_break=True)
 
     log(f"Checking for deletions.", line_break=True)
     file_deletions = 0
@@ -436,7 +436,7 @@ if __name__ == "__main__":
                 file_in_db = True
                 break
         if not file_in_db and not safe_mode:
-            log(f"File {md_file_path} is not in database and will be deleted.")
+            log(f"Deleting file at '{md_file_path}'.")
             os.remove(md_file_path)
             file_deletions += 1
             if not os.listdir(os.path.dirname(md_file_path)):
