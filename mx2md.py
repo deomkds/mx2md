@@ -16,6 +16,7 @@ class Note:
         self._entry = memorix_entry
         self._categories = categories
 
+        self.hash = self.generate_hash()
         self.title = self.determine_title()
         self.id = self.determine_id()
         self.flag = self.determine_flag()
@@ -28,7 +29,10 @@ class Note:
         self.content = self.determine_content()
         self.save_dir = self.determine_save_dir()
         self.file_name = self.determine_file_name()
-        self.hash = self.generate_hash()
+
+    def generate_hash(self):
+        byte_string = f"{self._entry}".encode("utf-8")
+        return hashlib.md5(byte_string).hexdigest()
 
     def determine_title(self):
         if ("title" in self._entry) and (self._entry["title"].strip() != ""):
@@ -128,17 +132,12 @@ class Note:
         if middle == "":
             middle = f"Note {self.order}"
 
-        return f"{prefix} {middle[:50]}"
+        return f"{prefix} {middle[:50]}".strip()
 
     def write_to_disk(self, path):
         with open(path, "w") as destination:
             destination.write(self.content)
         set_original_timestamp(path, self.mtime, self.ctime)
-
-    def generate_hash(self):
-        # Changes in order will make it think it's a new note, but I think that's okay.
-        byte_string = f"{self.id}-{self.order}".encode("utf-8")
-        return hashlib.md5(byte_string).hexdigest()
 
 
 class MemorixDB:
@@ -185,7 +184,15 @@ class SyncDB:
         for position, single_note in enumerate(self.notes):
             if single_note["id"] == note_id:
                 self.notes.pop(position)
-                break
+
+    def pop_note(self, note_pos):
+        self.notes.pop(note_pos)
+
+    def get_note_hash_from_pos(self, note_pos: int):
+        return self.notes[note_pos]["id"]
+
+    def get_note_path_from_pos(self, note_pos: int):
+        return self.notes[note_pos]["path"]
 
     def read(self):
         if os.path.exists(self.path):
@@ -310,10 +317,13 @@ def try_mkdir(path):
 
 # Main application routine. =========================================================
 if __name__ == "__main__":
+    # Declare "empty" variables to use later.
     mxdb_folder = ""
     mxdb_file = ""
     dest_path = ""
+    current_file = 0
 
+    # Check command line parameters.
     if len(sys.argv) < 5 or ("--help" in sys.argv):
         print_help()
         sys.exit()
@@ -325,19 +335,6 @@ if __name__ == "__main__":
         print("ERROR: Input and output must be specified.\n")
         print_help()
         sys.exit()
-
-    safe_mode = "--safe-mode" in sys.argv
-    debug_mode = "--verbose" in sys.argv
-
-    ignore_trash = "--ignore-trash" in sys.argv
-    ignore_archive = "--ignore-archive" in sys.argv
-    ignore_attachments = "--ignore-attachments" in sys.argv
-
-    separate_trash = "--separate-trash" in sys.argv
-    separate_archive = "--separate-archive" in sys.argv
-    separate_attachments = "--separate-attachments" in sys.argv
-
-    current_file = 0
 
     if os.path.exists(mxdb_folder):
         if mxdb_folder.endswith(".mxbk"):
@@ -352,67 +349,106 @@ if __name__ == "__main__":
         print("Memorix Database file or folder not found.")
         sys.exit()
 
-    log(f"Data will be exported to folder '{dest_path}'.")
+    # Set working variables.
+    safe_mode = "--safe-mode" in sys.argv
+    debug_mode = "--verbose" in sys.argv
+
+    ignore_trash = "--ignore-trash" in sys.argv
+    ignore_archive = "--ignore-archive" in sys.argv
+    ignore_attachments = "--ignore-attachments" in sys.argv
+
+    separate_trash = "--separate-trash" in sys.argv
+    separate_archive = "--separate-archive" in sys.argv
+    separate_attachments = "--separate-attachments" in sys.argv
+
+    # Try to create destination folder.
     try_mkdir(dest_path)
+    log(f"Data will be exported to folder '{dest_path}'.")
 
+    # Open Memorix backup file.
     mxdb = MemorixDB(mxdb_file)
+
+    # Create an empty list and store every note on it.
+    current_notes = []
+    for raw_note in mxdb.notes:
+        note = Note(raw_note, mxdb.categories)
+        current_notes.append(note)
+
+    # Open or create my database.
     sync_db = SyncDB(dest_path)
-    every_filename = []
 
-    for i, j in enumerate(mxdb.notes, start=1):
+    # Collect every filepath to avoid collisions.
+    filepaths = []
 
-        current_file = i
+    # Setup some counters for later.
+    unchanged_notes = 0
+    new_notes = 0
+    updated_notes = 0
 
-        log(f"Processing note {i} out of {mxdb.notes_count}.", line_break=True)
-        note = Note(j, mxdb.categories)
+    for pos, note in enumerate(current_notes, start=1):
 
+        # So log() knows which file we are working on right now.
+        current_file = pos
+
+        log(f"Processing note {pos} out of {mxdb.notes_count}.", line_break=True)
+
+        # Try to create folders based on the options selected by the user.
         if note.is_trashed() and separate_trash:
             log(f"Note is in the Trash.")
-            try_mkdir(os.path.dirname(note.save_dir))
+            try_mkdir(os.path.dirname(note.save_dir))  # Am I removing the category sub folder here?
         elif note.is_archived() and separate_archive:
             log(f"Note is Archived.")
-            try_mkdir(os.path.dirname(note.save_dir))
+            try_mkdir(os.path.dirname(note.save_dir))  # Am I removing the category sub folder here?
 
         log(f"Saving note in subfolder '{note.category}'.")
         try_mkdir(note.save_dir)
 
+        # Generate full path with file name and extension for current note.
         log(f"Using '{note.file_name}.md' as filename.")
         full_path = os.path.join(note.save_dir, f"{note.file_name}.md")
 
+        # This basically tests if the full path already exists
+        # and if it does, generates a new name to avoid collisions.
         name_counter = 1
         while True:
-            # To avoid files with same name in a directory.
-            if full_path.lower() in every_filename:
+            if full_path.lower() in filepaths:
                 full_path = os.path.join(note.save_dir, f"{note.file_name} {name_counter}.md")
                 log(f"Filename already in use, trying '{note.file_name} {name_counter}.md'.")
                 name_counter += 1
             else:
-                every_filename.append(full_path.lower())
+                filepaths.append(full_path.lower())
                 break
+
+        # Then, before writing files to disk, first
+        # check if it has an entry in the database.
 
         in_db = False
 
-        # FIXME: add version number to the database
-        #        to recreate entire folder structure
-        #        after script updates
-
+        # Go over every entry in the database looking for our current hash.
         for entry in sync_db.notes:
             if entry["id"] == note.hash:
                 log(f"Note with hash '{note.hash}' already in database.")
                 in_db = True
+                # If the note is found in the database, check its
+                # modified time to determine if it needs to be updated.
                 if entry["mtime"] < note.mtime or not os.path.exists(full_path):
+                    updated_notes += 1
                     log(f"Updating file.")
-                    note.write_to_disk(full_path)
-                    entry["mtime"] = note.mtime
+                    note.write_to_disk(full_path)  # If true, update the file.
+                    entry["mtime"] = note.mtime    # Then update the entry in the database.
                 else:
-                    log(f"File is most recent.")
+                    unchanged_notes += 1
+                    log(f"File is most recent.")   # If false, just ignore it, writing nothing to disk.
                 break
 
+        # If the hash isn't found in the database, add it.
         if not in_db:
+            new_notes += 1
             log(f"Adding new note with hash '{note.hash}' to the database.")
-            note.write_to_disk(full_path)
-            sync_db.add_note(note.hash, full_path, note.mtime)
+            note.write_to_disk(full_path)                       # Write note to disk.
+            sync_db.add_note(note.hash, full_path, note.mtime)  # Then update the database.
 
+        # Process attachments. This has its flaws, but I'm ignoring it for now.
         if note.attachments and not ignore_attachments:
             log(f"Note has {len(note.attachments)} attachments.")
             if separate_attachments:
@@ -425,43 +461,73 @@ if __name__ == "__main__":
             for attached_file in note.attachments:
                 mxdb.write_attachment(attached_file, attachment_dir)
 
-    current_file = 0
+    current_file = 0  # So log() knows we're not in the main notes loop anymore.
 
+    # Presents a summary because it's cool.
+    log(f"Added {new_notes} new note(s) to the database.", line_break=True)
+    log(f"Updated {updated_notes} existing note(s).")
+    log(f"Kept {unchanged_notes} note(s) unchanged.")
+    total_notes = new_notes + updated_notes + unchanged_notes
+    log(f"Expected to process {mxdb.notes_count} note(s).")
+    log(f"Processed a total of {total_notes} note(s).")
+    log(f"Notes processed: {(total_notes/mxdb.notes_count)*100}%")
+
+    # Out of the notes loop, we look for files that can be deleted.
+
+    # List every file at the destination.
     destination_folder = list_files_recursively(dest_path, ".md")
 
+    # Set up some counters to be used later.
     log(f"Checking for file deletions.", line_break=True)
     file_deletions = 0
     folder_deletions = 0
 
-    for file_path in destination_folder:
-        file_in_db = False
-        for entry in sync_db.notes:
-            if entry["path"] == file_path:
-                file_in_db = True
+    # Check every filepath
+    for md_file in destination_folder:
+        file_in_db = False  # Assume the file is not in the database.
+        for path in filepaths:
+            if md_file.lower() == path:
+                file_in_db = True  # If the path is found in the database, mark it for keeping.
                 break
+        # Delete stuff that hasn't been found in the database.
         if not file_in_db and not safe_mode:
-            log(f"Deleting file at '{file_path}'.")
-            os.remove(file_path)
+            log(f"Deleting file at '{md_file}'.")
+            os.remove(md_file)
             file_deletions += 1
-            if not os.listdir(os.path.dirname(file_path)):
-                os.rmdir(os.path.dirname(file_path))
+            # Remove empty folders.
+            if not os.listdir(os.path.dirname(md_file)):
+                os.rmdir(os.path.dirname(md_file))
                 folder_deletions += 1
 
+    # Report the counters back to the user.
     log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).")
 
+    # Setup some more counters.
     log("Performing database cleanup.", line_break=True)
     entry_deletions = 0
 
+    # Perform database cleanup.
+    invalid_indexes = []
     for pos, entry in enumerate(sync_db.notes):
-        entry_is_valid = False
-        for file_path in destination_folder:
-            if entry["path"] == file_path:
-                entry_is_valid = True
+        invalid_entry = True  # Assume the entry is invalid.
+        # Loop over every hash of the current session.
+        for note in current_notes:
+            if entry["id"] == note.hash:
+                invalid_entry = False
                 break
-        if not entry_is_valid:
-            log(f"Deleting file entry with ID '{entry["id"]}' from the database.")
-            sync_db.remove_note(entry["id"])
-            entry_deletions += 1
+        if invalid_entry:
+            # If the entry is invalid, take note of its position.
+            invalid_indexes.append(pos)
+
+    # Because we use indexes to delete stuff from the database, start deleting from the end.
+    # This avoids messing up the position of items.
+    invalid_indexes.sort(reverse=True)
+
+    for index in invalid_indexes:
+        note_path = sync_db.get_note_path_from_pos(index)
+        log(f"Deleting note with path '{note_path}' from the database.")
+        sync_db.pop_note(index)
+        entry_deletions += 1
 
     log(f"Deleted {entry_deletions} entry(ies) from the database.")
 
