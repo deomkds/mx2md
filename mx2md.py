@@ -49,6 +49,9 @@ class Note:
     def determine_order(self):
         return self._entry["order"]
 
+    def is_empty(self):
+        return True if self.content == "" else False
+
     def is_trashed(self):
         return test_bit(self.flag, 1)
 
@@ -211,7 +214,7 @@ def log(text, essential=False, line_break=False):
     if debug_mode or essential:
         moment_obj = datetime.now()
         moment = moment_obj.strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join(dest_path, 'log.txt')
+        path = os.path.join(dest_path, 'export_log.md')
         br = f"\n" if line_break else f""
         note_number = f"Note {current_file} -> " if current_file else f""
         output_line = f"{br}{moment}: {note_number}{text}"
@@ -301,6 +304,7 @@ def print_help():
     print("  --ignore-trash              Don't extract notes from the trash.")
     print("  --ignore-archive            Don't extract archived notes.")
     print("  --ignore-attachments        Don't extract note attachments.")
+    print("  --ignore-empty-notes        Don't extract notes that don't have any content.")
     print("  --separate-trash            Place notes from the trash in a separate 'Trash' folder.")
     print("  --separate-archive          Place archived notes in a separate 'Archive' folder.")
     print("  --separate-attachments      Place attachments in a separate 'Attachments' folder.")
@@ -322,6 +326,14 @@ if __name__ == "__main__":
     mxdb_file = ""
     dest_path = ""
     current_file = 0
+
+    # Setup some counters for summary.
+    unchanged_notes = 0
+    new_notes = 0
+    updated_notes = 0
+    skipped_empty_notes = 0
+    skipped_trashed_notes = 0
+    skipped_archived_notes = 0
 
     # Check command line parameters.
     if len(sys.argv) < 5 or ("--help" in sys.argv):
@@ -356,6 +368,7 @@ if __name__ == "__main__":
     ignore_trash = "--ignore-trash" in sys.argv
     ignore_archive = "--ignore-archive" in sys.argv
     ignore_attachments = "--ignore-attachments" in sys.argv
+    ignore_empty_notes = "--ignore-empty-notes" in sys.argv
 
     separate_trash = "--separate-trash" in sys.argv
     separate_archive = "--separate-archive" in sys.argv
@@ -374,23 +387,36 @@ if __name__ == "__main__":
         note = Note(raw_note, mxdb.categories)
         current_notes.append(note)
 
+    # Removes empty notes from the processing list.
+    notes_to_ignore = []
+    for pos, note in enumerate(current_notes):
+        if note.is_empty() and ignore_empty_notes:
+            notes_to_ignore.append(pos)
+            skipped_empty_notes += 1
+        elif note.is_trashed() and ignore_trash:
+            notes_to_ignore.append(pos)
+            skipped_trashed_notes += 1
+        elif note.is_archived() and ignore_archive:
+            notes_to_ignore.append(pos)
+            skipped_archived_notes += 1
+
+    notes_to_ignore.sort(reverse=True)
+
+    for index in notes_to_ignore:
+        current_notes.pop(index)
+
     # Open or create my database.
     sync_db = SyncDB(dest_path)
 
     # Collect every filepath to avoid collisions.
     filepaths = []
 
-    # Setup some counters for later.
-    unchanged_notes = 0
-    new_notes = 0
-    updated_notes = 0
-
     for pos, note in enumerate(current_notes, start=1):
 
         # So log() knows which file we are working on right now.
         current_file = pos
 
-        log(f"Processing note {pos} out of {mxdb.notes_count}.", line_break=True)
+        log(f"Processing note {pos} out of {len(current_notes)}.", line_break=True)
 
         # Try to create folders based on the options selected by the user.
         if note.is_trashed() and separate_trash:
@@ -463,15 +489,6 @@ if __name__ == "__main__":
 
     current_file = 0  # So log() knows we're not in the main notes loop anymore.
 
-    # Presents a summary because it's cool.
-    log(f"Added {new_notes} new note(s) to the database.", line_break=True)
-    log(f"Updated {updated_notes} existing note(s).")
-    log(f"Kept {unchanged_notes} note(s) unchanged.")
-    total_notes = new_notes + updated_notes + unchanged_notes
-    log(f"Expected to process {mxdb.notes_count} note(s).")
-    log(f"Processed a total of {total_notes} note(s).")
-    log(f"Notes processed: {(total_notes/mxdb.notes_count)*100}%")
-
     # Out of the notes loop, we look for files that can be deleted.
 
     # List every file at the destination.
@@ -499,8 +516,7 @@ if __name__ == "__main__":
                 os.rmdir(os.path.dirname(md_file))
                 folder_deletions += 1
 
-    # Report the counters back to the user.
-    log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).")
+
 
     # Setup some more counters.
     log("Performing database cleanup.", line_break=True)
@@ -529,7 +545,34 @@ if __name__ == "__main__":
         sync_db.pop_note(index)
         entry_deletions += 1
 
-    log(f"Deleted {entry_deletions} entry(ies) from the database.")
-
     log("Writing database to disk.", line_break=True)
     sync_db.write()
+
+    # Presents a summary because it's cool.
+    log(f"Added {new_notes} new note(s) to the database.", line_break=True, essential=True)
+    log(f"Updated {updated_notes} existing note(s).", essential=True)
+    log(f"Kept {unchanged_notes} note(s) unchanged.", essential=True)
+
+    total_notes = new_notes + updated_notes + unchanged_notes
+
+    if ignore_empty_notes:
+        log(f"Ignored {skipped_empty_notes} empty note(s)", essential=True)
+        total_notes += skipped_empty_notes
+
+    if ignore_trash:
+        log(f"Ignored {skipped_trashed_notes} trashed note(s)", essential=True)
+        total_notes += skipped_trashed_notes
+
+    if ignore_archive:
+        log(f"Ignored {skipped_archived_notes} archived note(s)", essential=True)
+        total_notes += skipped_archived_notes
+
+    log(f"Expected to process {mxdb.notes_count} note(s).", essential=True)
+    log(f"Processed a total of {total_notes} note(s).", essential=True)
+
+    percentage = (total_notes / mxdb.notes_count) * 100
+
+    log(f"Notes processed: {percentage:.2f}%", essential=True)
+
+    log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).", essential=True)
+    log(f"Deleted {entry_deletions} entry(ies) from the database.", essential=True)
