@@ -21,7 +21,7 @@ python3 mx2md.py -i [input file or folder] -o [output folder] [options]
 | --help                 | Prints this help.                                                                                                                                       |
 | --skip-trash           | Skip notes from the trash.                                                                                                                              |
 | --skip-archive         | Skip archived notes.                                                                                                                                    |
-| --skip-empty           | Skip notes with no content.                                                                                                                             |
+| --skip-empty           | Skip notes without content.                                                                                                                             |
 | --ignore-attachments   | Don't extract note attachments.                                                                                                                         |
 | --separate-trash       | Place notes from the trash in a separate 'Trash' folder.                                                                                                |
 | --separate-archive     | Place archived notes in a separate 'Archive' folder.                                                                                                    |
