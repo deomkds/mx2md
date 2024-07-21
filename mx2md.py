@@ -214,7 +214,7 @@ def log(text, essential=False, line_break=False):
     if debug_mode or essential:
         moment_obj = datetime.now()
         moment = moment_obj.strftime("%Y-%m-%d %H:%M:%S")
-        path = os.path.join(dest_path, 'export_log.md')
+        path = os.path.join(dest_path, 'export_log.txt')
         br = f"\n" if line_break else f""
         note_number = f"Note {current_file} -> " if current_file else f""
         output_line = f"{br}{moment}: {note_number}{text}"
@@ -319,6 +319,35 @@ def try_mkdir(path):
             sys.exit()
 
 
+def summary():
+    # Presents a summary because it's cool.
+    total_notes = new_notes + updated_notes + unchanged_notes
+    percentage = (total_notes / mxdb.notes_count) * 100
+
+    log("======== SUMMARY ======== ", line_break=True)
+    log(f"Added {new_notes} new note(s) to the database.", essential=True)
+    log(f"Updated {updated_notes} existing note(s).", essential=True)
+    log(f"Kept {unchanged_notes} note(s) unchanged.", essential=True)
+
+    if skip_empty:
+        log(f"Ignored {skipped_empty_notes} empty note(s)", essential=True)
+        total_notes += skipped_empty_notes
+
+    if skip_trash:
+        log(f"Ignored {skipped_trashed_notes} trashed note(s)", essential=True)
+        total_notes += skipped_trashed_notes
+
+    if skip_archive:
+        log(f"Ignored {skipped_archived_notes} archived note(s)", essential=True)
+        total_notes += skipped_archived_notes
+
+    log(f"Expected to process {mxdb.notes_count} note(s).", essential=True)
+    log(f"Processed a total of {total_notes} note(s).", essential=True)
+    log(f"Notes processed: {percentage:.2f}%", essential=True)
+    log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).", essential=True)
+    log(f"Deleted {entry_deletions} entry(ies) from the database.", essential=True)
+
+
 # Main application routine. =========================================================
 if __name__ == "__main__":
     # Declare "empty" variables to use later.
@@ -334,6 +363,9 @@ if __name__ == "__main__":
     skipped_empty_notes = 0
     skipped_trashed_notes = 0
     skipped_archived_notes = 0
+    file_deletions = 0
+    folder_deletions = 0
+    entry_deletions = 0
 
     # Check command line parameters.
     if len(sys.argv) < 5 or ("--help" in sys.argv):
@@ -496,8 +528,6 @@ if __name__ == "__main__":
 
     # Set up some counters to be used later.
     log(f"Checking for file deletions.", line_break=True)
-    file_deletions = 0
-    folder_deletions = 0
 
     # Check every filepath
     for md_file in destination_folder:
@@ -516,11 +546,8 @@ if __name__ == "__main__":
                 os.rmdir(os.path.dirname(md_file))
                 folder_deletions += 1
 
-
-
     # Setup some more counters.
     log("Performing database cleanup.", line_break=True)
-    entry_deletions = 0
 
     # Perform database cleanup.
     invalid_indexes = []
@@ -548,31 +575,4 @@ if __name__ == "__main__":
     log("Writing database to disk.", line_break=True)
     sync_db.write()
 
-    # Presents a summary because it's cool.
-    log(f"Added {new_notes} new note(s) to the database.", line_break=True, essential=True)
-    log(f"Updated {updated_notes} existing note(s).", essential=True)
-    log(f"Kept {unchanged_notes} note(s) unchanged.", essential=True)
-
-    total_notes = new_notes + updated_notes + unchanged_notes
-
-    if skip_empty:
-        log(f"Ignored {skipped_empty_notes} empty note(s)", essential=True)
-        total_notes += skipped_empty_notes
-
-    if skip_trash:
-        log(f"Ignored {skipped_trashed_notes} trashed note(s)", essential=True)
-        total_notes += skipped_trashed_notes
-
-    if skip_archive:
-        log(f"Ignored {skipped_archived_notes} archived note(s)", essential=True)
-        total_notes += skipped_archived_notes
-
-    log(f"Expected to process {mxdb.notes_count} note(s).", essential=True)
-    log(f"Processed a total of {total_notes} note(s).", essential=True)
-
-    percentage = (total_notes / mxdb.notes_count) * 100
-
-    log(f"Notes processed: {percentage:.2f}%", essential=True)
-
-    log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).", essential=True)
-    log(f"Deleted {entry_deletions} entry(ies) from the database.", essential=True)
+    summary()
