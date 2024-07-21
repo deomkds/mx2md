@@ -119,9 +119,9 @@ class Note:
         return self._entry["attachments"]
 
     def determine_save_dir(self):
-        if self.is_trashed() and separate_trash and not ignore_trash:
+        if self.is_trashed() and separate_trash and not skip_trash:
             path = os.path.join(dest_path, "Trash")
-        elif self.is_archived() and separate_archive and not ignore_archive:
+        elif self.is_archived() and separate_archive and not skip_archive:
             path = os.path.join(dest_path, "Archive")
         else:
             path = dest_path
@@ -365,10 +365,10 @@ if __name__ == "__main__":
     safe_mode = "--safe-mode" in sys.argv
     debug_mode = "--verbose" in sys.argv
 
-    ignore_trash = "--ignore-trash" in sys.argv
-    ignore_archive = "--ignore-archive" in sys.argv
+    skip_trash = "--skip-trash" in sys.argv
+    skip_archive = "--skip-archive" in sys.argv
+    skip_empty = "--skip-empty" in sys.argv
     ignore_attachments = "--ignore-attachments" in sys.argv
-    ignore_empty_notes = "--ignore-empty-notes" in sys.argv
 
     separate_trash = "--separate-trash" in sys.argv
     separate_archive = "--separate-archive" in sys.argv
@@ -390,13 +390,13 @@ if __name__ == "__main__":
     # Removes empty notes from the processing list.
     notes_to_ignore = []
     for pos, note in enumerate(current_notes):
-        if note.is_empty() and ignore_empty_notes:
+        if note.is_empty() and skip_empty:
             notes_to_ignore.append(pos)
             skipped_empty_notes += 1
-        elif note.is_trashed() and ignore_trash:
+        elif note.is_trashed() and skip_trash:
             notes_to_ignore.append(pos)
             skipped_trashed_notes += 1
-        elif note.is_archived() and ignore_archive:
+        elif note.is_archived() and skip_archive:
             notes_to_ignore.append(pos)
             skipped_archived_notes += 1
 
@@ -555,15 +555,15 @@ if __name__ == "__main__":
 
     total_notes = new_notes + updated_notes + unchanged_notes
 
-    if ignore_empty_notes:
+    if skip_empty:
         log(f"Ignored {skipped_empty_notes} empty note(s)", essential=True)
         total_notes += skipped_empty_notes
 
-    if ignore_trash:
+    if skip_trash:
         log(f"Ignored {skipped_trashed_notes} trashed note(s)", essential=True)
         total_notes += skipped_trashed_notes
 
-    if ignore_archive:
+    if skip_archive:
         log(f"Ignored {skipped_archived_notes} archived note(s)", essential=True)
         total_notes += skipped_archived_notes
 
