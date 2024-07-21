@@ -6,9 +6,9 @@ import os
 import sys
 import time
 import re
+import hashlib
 from zipfile import ZipFile
 from datetime import datetime
-import hashlib
 
 
 class Note:
@@ -126,7 +126,7 @@ class Note:
         # Removes special characters to make filenames for Windows/OneDrive.
         middle = re.sub(r'[^\w_. -]', '', self.title).strip()
         if middle == "":
-            middle = "Note " + str(self._entry["order"])
+            middle = f"Note {self.order}"
 
         return f"{prefix} {middle[:50]}"
 
@@ -180,6 +180,12 @@ class SyncDB:
 
     def add_note(self, note_id, path, mtime):
         self.notes.append({"id": note_id, "path": path, "mtime": mtime})
+
+    def remove_note(self, note_id):
+        for position, single_note in enumerate(self.notes):
+            if single_note["id"] == note_id:
+                self.notes.pop(position)
+                break
 
     def read(self):
         if os.path.exists(self.path):
@@ -304,8 +310,8 @@ def try_mkdir(path):
 
 # Main application routine. =========================================================
 if __name__ == "__main__":
-    memorix_db_path = ""
-    memorix_db_file = ""
+    mxdb_folder = ""
+    mxdb_file = ""
     dest_path = ""
 
     if len(sys.argv) < 5 or ("--help" in sys.argv):
@@ -313,7 +319,7 @@ if __name__ == "__main__":
         sys.exit()
 
     if ("-i" in sys.argv) and ("-o" in sys.argv):
-        memorix_db_path = sys.argv[sys.argv.index("-i") + 1]
+        mxdb_folder = sys.argv[sys.argv.index("-i") + 1]
         dest_path = os.path.join(sys.argv[sys.argv.index("-o") + 1], "Memorix")
     else:
         print("ERROR: Input and output must be specified.\n")
@@ -333,14 +339,14 @@ if __name__ == "__main__":
 
     current_file = 0
 
-    if os.path.exists(memorix_db_path):
-        if memorix_db_path.endswith(".mxbk"):
-            memorix_db_file = memorix_db_path
+    if os.path.exists(mxdb_folder):
+        if mxdb_folder.endswith(".mxbk"):
+            mxdb_file = mxdb_folder
         else:
-            memorix_db_file = find_latest_backup(memorix_db_path)
+            mxdb_file = find_latest_backup(mxdb_folder)
 
-        if memorix_db_file is None:
-            print(f"Memorix Database file not found in folder '{memorix_db_path}'.")
+        if mxdb_file is None:
+            print(f"Memorix Database file not found in folder '{mxdb_folder}'.")
             sys.exit()
     else:
         print("Memorix Database file or folder not found.")
@@ -349,7 +355,7 @@ if __name__ == "__main__":
     log(f"Data will be exported to folder '{dest_path}'.")
     try_mkdir(dest_path)
 
-    mxdb = MemorixDB(memorix_db_file)
+    mxdb = MemorixDB(mxdb_file)
     sync_db = SyncDB(dest_path)
     every_filename = []
 
@@ -395,7 +401,7 @@ if __name__ == "__main__":
                 log(f"Note with hash '{note.hash}' already in database.")
                 in_db = True
                 if entry["mtime"] < note.mtime or not os.path.exists(full_path):
-                    log(f"Updating file changed at '{note.mtime}'.")
+                    log(f"Updating file.")
                     note.write_to_disk(full_path)
                     entry["mtime"] = note.mtime
                 else:
@@ -421,26 +427,43 @@ if __name__ == "__main__":
 
     current_file = 0
 
-    log("Writing database to disk.", line_break=True)
-    sync_db.write()
+    destination_folder = list_files_recursively(dest_path, ".md")
 
-    log(f"Checking for deletions.", line_break=True)
+    log(f"Checking for file deletions.", line_break=True)
     file_deletions = 0
     folder_deletions = 0
-    files_in_dest = list_files_recursively(dest_path, ".md")
 
-    for md_file_path in files_in_dest:
+    for file_path in destination_folder:
         file_in_db = False
         for entry in sync_db.notes:
-            if entry["path"] == md_file_path:
+            if entry["path"] == file_path:
                 file_in_db = True
                 break
         if not file_in_db and not safe_mode:
-            log(f"Deleting file at '{md_file_path}'.")
-            os.remove(md_file_path)
+            log(f"Deleting file at '{file_path}'.")
+            os.remove(file_path)
             file_deletions += 1
-            if not os.listdir(os.path.dirname(md_file_path)):
-                os.rmdir(os.path.dirname(md_file_path))
+            if not os.listdir(os.path.dirname(file_path)):
+                os.rmdir(os.path.dirname(file_path))
                 folder_deletions += 1
 
     log(f"Deleted {file_deletions} file(s) and {folder_deletions} folder(s).")
+
+    log("Performing database cleanup.", line_break=True)
+    entry_deletions = 0
+
+    for pos, entry in enumerate(sync_db.notes):
+        entry_is_valid = False
+        for file_path in destination_folder:
+            if entry["path"] == file_path:
+                entry_is_valid = True
+                break
+        if not entry_is_valid:
+            log(f"Deleting file entry with ID '{entry["id"]}' from the database.")
+            sync_db.remove_note(entry["id"])
+            entry_deletions += 1
+
+    log(f"Deleted {entry_deletions} entry(ies) from the database.")
+
+    log("Writing database to disk.", line_break=True)
+    sync_db.write()
