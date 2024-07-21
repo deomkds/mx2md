@@ -19,8 +19,9 @@ python3 mx2md.py -i [input file or folder] -o [output folder] [options]
 | --safe-mode            | Enables Safe Mode where no files are deleted from disk.                                                                                                 |
 | --verbose              | Enables verbose output with debug information.                                                                                                          |
 | --help                 | Prints this help.                                                                                                                                       |
-| --ignore-trash         | Don't extract notes from the trash.                                                                                                                     |
-| --ignore-archive       | Don't extract archived notes.                                                                                                                           |
+| --skip-trash           | Skip notes from the trash.                                                                                                                              |
+| --skip-archive         | Skip archived notes.                                                                                                                                    |
+| --skip-empty           | Skip notes with no content.                                                                                                                             |
 | --ignore-attachments   | Don't extract note attachments.                                                                                                                         |
 | --separate-trash       | Place notes from the trash in a separate 'Trash' folder.                                                                                                |
 | --separate-archive     | Place archived notes in a separate 'Archive' folder.                                                                                                    |
